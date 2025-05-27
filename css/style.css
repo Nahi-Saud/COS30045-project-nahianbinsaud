@@ -1,0 +1,128 @@
+/* Global Resets and Layout */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, Arial, sans-serif;
+  background-color: #f4f7f9;
+  color: #333;
+  line-height: 1.5;
+}
+
+/* Header */
+header {
+  background-color: #002855;
+  color: white;
+  padding: 1.5rem 2rem;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+header h1 {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.tabs ul {
+  display: flex;
+  list-style: none;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.tabs li {
+  background-color: #004f8c;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.tabs li:hover {
+  background-color: #006fcf;
+}
+
+.tabs li.active {
+  background-color: #0088ff;
+  font-weight: bold;
+}
+
+/* Dashboard Layout */
+.dashboard-wrapper {
+  display: flex;
+  flex-direction: row;
+  height: calc(100vh - 140px);
+  padding: 1rem 2rem;
+}
+
+/* Sidebar for filters */
+.filter-panel {
+  width: 240px;
+  padding-right: 2rem;
+  border-right: 1px solid #ddd;
+  background-color: #ffffff;
+}
+
+.filter-panel label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+.filter-panel select {
+  width: 100%;
+  padding: 0.4rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Main visual area */
+.visualisation-panel {
+  flex: 1;
+  padding-left: 2rem;
+  overflow-y: auto;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.visible {
+  display: block;
+}
+
+/* Footer */
+footer {
+  background-color: #eaeaea;
+  padding: 1rem 2rem;
+  text-align: center;
+  font-size: 0.9rem;
+  border-top: 1px solid #ccc;
+}
+
+/* Chart Styling */
+svg {
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  border-radius: 4px;
+}
+
+.bar {
+  fill: steelblue;
+}
+
+.axis text {
+  font-size: 12px;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #333;
+  shape-rendering: crispEdges;
+}

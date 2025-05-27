@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Australian Police Enforcement Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Australian Police Enforcement Data Dashboard</h1>
+    <nav class="tabs">
+      <ul>
+        <li class="active" data-tab="fines">Fines</li>
+        <li data-tab="alcohol">Alcohol Tests</li>
+        <li data-tab="breath">Breath Tests</li>
+        <li data-tab="drug">Drug Tests</li>
+      </ul>
+    </nav>
+  </header>
+
+  <div class="dashboard-wrapper">
+    <aside id="filters" class="filter-panel">
+      <!-- Dynamic filters will be injected here -->
+    </aside>
+
+    <main class="visualisation-panel">
+      <div id="tab-fines" class="tab-content visible"></div>
+      <div id="tab-alcohol" class="tab-content"></div>
+      <div id="tab-breath" class="tab-content"></div>
+      <div id="tab-drug" class="tab-content"></div>
+    </main>
+  </div>
+
+  <footer>
+    <p>Data Source: Bureau of Infrastructure and Transport Research Economics (BITRE)</p>
+  </footer>
+
+  <script src="js/main.js"></script>
+</body>
+</html>

@@ -26,22 +26,22 @@ function initTabs() {
   });
 }
 
+
 function initFilters(callback) {
   const container = d3.select('#filters');
-  container.html('');
+  container.html(''); // Clear old filters
 
   const data = datasets[currentTab];
   if (!data) return;
 
-  const years = [...new Set(data.map(d => d.YEAR))].filter(Boolean);
   const jurisdictions = [...new Set(data.map(d => d.JURISDICTION))].filter(Boolean);
-
-  addDropdown(container, 'Year', years, 'yearFilter');
   addDropdown(container, 'Jurisdiction', jurisdictions, 'jurisdictionFilter');
 
-  if (['fines',  'drug'].includes(currentTab)) {
+  if (['fines', 'drug'].includes(currentTab)) {
     const ageGroups = [...new Set(data.map(d => d.AGE_GROUP))].filter(Boolean);
-    addDropdown(container, 'Age Group', ageGroups, 'ageGroupFilter');
+    if (ageGroups.length > 1) {
+      addDropdown(container, 'Age Group', ageGroups, 'ageGroupFilter');
+    }
   }
 
   if (currentTab === 'drug') {
@@ -52,6 +52,8 @@ function initFilters(callback) {
   if (typeof callback === 'function') setTimeout(callback, 0);
 }
 
+
+
 function addDropdown(container, label, options, id) {
   container.append('label').attr('for', id).text(`Select ${label}:`);
   const select = container.append('select').attr('id', id);
@@ -60,29 +62,27 @@ function addDropdown(container, label, options, id) {
   select.on('change', () => renderCurrentTab());
 }
 
+
 function getFilteredData() {
   const data = datasets[currentTab];
   if (!data) return [];
 
-  const yearEl = d3.select('#yearFilter').node();
   const jurEl = d3.select('#jurisdictionFilter').node();
   const ageEl = d3.select('#ageGroupFilter').node();
   const detEl = d3.select('#detectionFilter').node();
 
-  if (!yearEl || !jurEl) return [];
-
-  const year = yearEl.value;
-  const jur = jurEl.value;
+  const jur = jurEl ? jurEl.value : 'All';
   const age = ageEl ? ageEl.value : null;
   const det = detEl ? detEl.value : null;
 
   return data.filter(d =>
-    (year === 'All' || d.YEAR == year) &&
+    d.YEAR == 2023 && 
     (jur === 'All' || d.JURISDICTION === jur) &&
     (!age || age === 'All' || d.AGE_GROUP === age) &&
     (!det || det === 'All' || d.DETECTION_METHOD === det)
   );
 }
+
 
 
 function renderCurrentTab() {
@@ -156,82 +156,89 @@ function renderFines() {
 }
 
 function renderAlcohol() {
-  const data = getFilteredData();
   const container = d3.select('#tab-alcohol');
   container.selectAll('*').remove();
 
-  if (!data.length) {
-    container.append('p').text('No data available for selected filters.');
+  const data = datasets.alcohol.filter(d => d.YEAR === 2023);
+  const jur = d3.select('#jurisdictionFilter')?.node()?.value || 'All';
+
+  const filtered = data.filter(d =>
+    jur === 'All' || d.JURISDICTION === jur
+  );
+
+  if (!filtered.length) {
+    container.append('p').text('No data available for selected jurisdiction.');
     return;
   }
 
-  // Group by YEAR and METRIC
   const grouped = d3.rollups(
-    data,
+    filtered,
     v => d3.sum(v, d => +d.COUNT || 0),
-    d => d.YEAR,
+    d => d.JURISDICTION,
     d => d.METRIC
   );
 
-  // Transform to flat array: [{YEAR, METRIC, COUNT}]
-  const flat = [];
-  grouped.forEach(([year, metrics]) => {
-    metrics.forEach(([metric, count]) => {
-      flat.push({ year, metric, count });
+  const jurisdictions = Array.from(new Set(filtered.map(d => d.JURISDICTION)));
+  const metrics = ['breath_tests_conducted', 'drug_tests_conducted'];
+  const colorScale = d3.scaleOrdinal()
+    .domain(metrics)
+    .range(['#1f77b4', '#ff7f0e']);
+
+  const chartData = [];
+  grouped.forEach(([jur, metricVals]) => {
+    const entry = { jurisdiction: jur };
+    metricVals.forEach(([metric, value]) => {
+      entry[metric] = value;
     });
+    chartData.push(entry);
   });
 
-  const margin = { top: 40, right: 80, bottom: 50, left: 60 };
+  // Dimensions
+  const margin = { top: 40, right: 30, bottom: 60, left: 80 };
   const width = 800;
   const height = 400;
-
   const svg = container.append('svg')
     .attr('width', width)
     .attr('height', height);
 
-  const years = [...new Set(flat.map(d => d.year))].sort();
-  const metrics = [...new Set(flat.map(d => d.metric))];
+  const x0 = d3.scaleBand()
+    .domain(chartData.map(d => d.jurisdiction))
+    .range([margin.left, width - margin.right])
+    .paddingInner(0.2);
 
-  const x = d3.scalePoint().domain(years).range([margin.left, width - margin.right]);
+  const x1 = d3.scaleBand()
+    .domain(metrics)
+    .range([0, x0.bandwidth()])
+    .padding(0.05);
+
   const y = d3.scaleLinear()
-    .domain([0, d3.max(flat, d => d.count)]).nice()
+    .domain([0, d3.max(chartData, d => Math.max(d.breath_tests_conducted || 0, d.drug_tests_conducted || 0))])
+    .nice()
     .range([height - margin.bottom, margin.top]);
 
-  const color = d3.scaleOrdinal()
-    .domain(metrics)
-    .range(['#007acc', '#ff7f0e']);
-
+  // Axes
   svg.append('g')
     .attr('transform', `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(x).tickSizeOuter(0));
+    .call(d3.axisBottom(x0));
 
   svg.append('g')
     .attr('transform', `translate(${margin.left},0)`)
-    .call(d3.axisLeft(y));
+    .call(d3.axisLeft(y).ticks(6));
 
-  const line = d3.line()
-    .x(d => x(d.year))
-    .y(d => y(d.count));
-
-  metrics.forEach(metric => {
-    const series = flat.filter(d => d.metric === metric);
-
-    svg.append('path')
-      .datum(series)
-      .attr('fill', 'none')
-      .attr('stroke', color(metric))
-      .attr('stroke-width', 2)
-      .attr('d', line);
-
-    svg.selectAll(`.dot-${metric}`)
-      .data(series)
-      .enter()
-      .append('circle')
-      .attr('cx', d => x(d.year))
-      .attr('cy', d => y(d.count))
-      .attr('r', 3)
-      .attr('fill', color(metric));
-  });
+  // Bars
+  svg.append('g')
+    .selectAll('g')
+    .data(chartData)
+    .join('g')
+    .attr('transform', d => `translate(${x0(d.jurisdiction)},0)`)
+    .selectAll('rect')
+    .data(d => metrics.map(key => ({ key, value: d[key] || 0 })))
+    .join('rect')
+    .attr('x', d => x1(d.key))
+    .attr('y', d => y(d.value))
+    .attr('width', x1.bandwidth())
+    .attr('height', d => height - margin.bottom - y(d.value))
+    .attr('fill', d => colorScale(d.key));
 
   // Title
   svg.append('text')
@@ -239,175 +246,97 @@ function renderAlcohol() {
     .attr('y', margin.top - 20)
     .attr('text-anchor', 'middle')
     .attr('font-size', '16px')
-    .text('Total Alcohol & Drug Tests Conducted per Year');
+    .text('Total Alcohol & Drug Tests Conducted (2023)');
 
   // Legend
-  const legend = svg.selectAll('.legend')
-    .data(metrics)
-    .enter()
-    .append('g')
-    .attr('transform', (d, i) => `translate(${width - margin.right + 10},${margin.top + i * 20})`);
+  const legend = svg.append('g')
+    .attr('transform', `translate(${width - margin.right - 160},${margin.top})`);
 
-  legend.append('rect')
-    .attr('x', 0)
-    .attr('width', 10)
-    .attr('height', 10)
-    .attr('fill', d => color(d));
+  metrics.forEach((metric, i) => {
+    const g = legend.append('g')
+      .attr('transform', `translate(0, ${i * 20})`);
 
-  legend.append('text')
-    .attr('x', 15)
-    .attr('y', 9)
-    .text(d => d.replace('_', ' '))
-    .style('font-size', '12px');
+    g.append('rect')
+      .attr('width', 15)
+      .attr('height', 15)
+      .attr('fill', colorScale(metric));
+
+    g.append('text')
+      .attr('x', 20)
+      .attr('y', 12)
+      .text(metric.replace('_', ' '))
+      .attr('font-size', '12px');
+  });
 }
+
 
 
 function renderBreath() {
   const container = d3.select('#tab-breath');
   container.selectAll('*').remove();
 
-  const totalData = datasets.alcohol.filter(d => d.METRIC === 'breath_tests_conducted');
-  const positiveData = datasets.breath;
-
-  if (!totalData.length || !positiveData.length) {
-    container.append('p').text('Breath test data unavailable.');
+  const data = getFilteredData();
+  if (!data.length) {
+    container.append('p').text('No breath test data found for 2023 with selected filters.');
     return;
   }
 
-  const yearVal = d3.select('#yearFilter').node()?.value || 'All';
-  const jurVal = d3.select('#jurisdictionFilter').node()?.value || 'All';
-
-  const totalFiltered = totalData.filter(d =>
-    (yearVal === 'All' || d.YEAR == yearVal) &&
-    (jurVal === 'All' || d.JURISDICTION === jurVal)
-  );
-
-  const positiveFiltered = positiveData.filter(d =>
-    (yearVal === 'All' || d.YEAR == yearVal) &&
-    (jurVal === 'All' || d.JURISDICTION === jurVal)
-  );
-
-  const totalByYear = d3.rollup(
-    totalFiltered,
+  // Group and sum by JURISDICTION or AGE_GROUP if available
+  const groupKey = data[0].AGE_GROUP ? 'AGE_GROUP' : 'JURISDICTION';
+  const grouped = d3.rollup(
+    data,
     v => d3.sum(v, d => +d.COUNT || 0),
-    d => d.YEAR
+    d => d[groupKey]
   );
 
-  const positiveByYear = d3.rollup(
-    positiveFiltered,
-    v => d3.sum(v, d => +d.COUNT || 0),
-    d => d.YEAR
-  );
+  const keys = Array.from(grouped.keys()).sort();
+  const values = keys.map(k => grouped.get(k));
 
-  const years = Array.from(totalByYear.keys()).sort();
-  const totals = years.map(y => totalByYear.get(y));
-  const positives = years.map(y => positiveByYear.get(y) || 0);
-  const percentages = totals.map((t, i) => t > 0 ? positives[i] / t * 100 : 0);
-
-  const margin = { top: 50, right: 60, bottom: 50, left: 70 };
-  const width = 800;
-  const height = 400;
+  const margin = { top: 40, right: 30, bottom: 50, left: 70 };
+  const width = 800, height = 400;
 
   const svg = container.append('svg')
     .attr('width', width)
     .attr('height', height);
 
   const x = d3.scaleBand()
-    .domain(years)
+    .domain(keys)
     .range([margin.left, width - margin.right])
     .padding(0.2);
 
-  const yLeft = d3.scaleLinear()
-    .domain([0, d3.max(totals)]).nice()
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(values)]).nice()
     .range([height - margin.bottom, margin.top]);
 
-  const yRight = d3.scaleLinear()
-    .domain([0, d3.max(percentages)]).nice()
-    .range([height - margin.bottom, margin.top]);
-
-  // X Axis
   svg.append('g')
     .attr('transform', `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(x).tickFormat(d3.format('d')));
+    .call(d3.axisBottom(x))
+    .selectAll("text")
+    .attr("transform", "rotate(-45)")
+    .style("text-anchor", "end");
 
-  // Y Axes
   svg.append('g')
     .attr('transform', `translate(${margin.left},0)`)
-    .call(d3.axisLeft(yLeft).ticks(6));
+    .call(d3.axisLeft(y));
 
-  svg.append('g')
-    .attr('transform', `translate(${width - margin.right},0)`)
-    .call(d3.axisRight(yRight).ticks(6).tickFormat(d => `${d.toFixed(1)}%`));
-
-  // Bars - Breath Tests
-  svg.selectAll('.bar')
-    .data(years)
+  svg.selectAll('rect')
+    .data(keys)
     .enter()
     .append('rect')
     .attr('x', d => x(d))
-    .attr('y', d => yLeft(totalByYear.get(d)))
+    .attr('y', d => y(grouped.get(d)))
     .attr('width', x.bandwidth())
-    .attr('height', d => height - margin.bottom - yLeft(totalByYear.get(d)))
-    .attr('fill', '#1f77b4');
+    .attr('height', d => height - margin.bottom - y(grouped.get(d)))
+    .attr('fill', '#c0392b');
 
-  // Line - % Positive
-  const line = d3.line()
-    .x((d, i) => x(years[i]) + x.bandwidth() / 2)
-    .y(d => yRight(d));
-
-  svg.append('path')
-    .datum(percentages)
-    .attr('fill', 'none')
-    .attr('stroke', 'orange')
-    .attr('stroke-width', 2)
-    .attr('d', line);
-
-  svg.selectAll('.dot')
-    .data(percentages)
-    .enter()
-    .append('circle')
-    .attr('cx', (d, i) => x(years[i]) + x.bandwidth() / 2)
-    .attr('cy', d => yRight(d))
-    .attr('r', 3)
-    .attr('fill', 'orange');
-
-  // Title
   svg.append('text')
     .attr('x', width / 2)
-    .attr('y', margin.top - 25)
+    .attr('y', margin.top - 20)
     .attr('text-anchor', 'middle')
     .attr('font-size', '16px')
-    .text('Breath Tests vs % Positive Results');
-
-  // Legend
-  const legend = svg.append('g')
-    .attr('transform', `translate(${width - 160},${margin.top})`);
-
-  legend.append('rect')
-    .attr('width', 15)
-    .attr('height', 15)
-    .attr('fill', '#1f77b4');
-
-  legend.append('text')
-    .attr('x', 20)
-    .attr('y', 12)
-    .style('font-size', '12px')
-    .text('Breath Tests');
-
-  legend.append('line')
-    .attr('x1', 0)
-    .attr('y1', 25)
-    .attr('x2', 15)
-    .attr('y2', 25)
-    .attr('stroke', 'orange')
-    .attr('stroke-width', 2);
-
-  legend.append('text')
-    .attr('x', 20)
-    .attr('y', 29)
-    .style('font-size', '12px')
-    .text('% Positive');
+    .text(`Positive Breath Tests by ${groupKey}`);
 }
+
 
 
 
@@ -420,30 +349,26 @@ function renderDrug() {
 
   const data = getFilteredData();
   if (!data.length) {
-    container.append('p').text('Drug test data is unavailable or zero for selected filters.');
+    container.append('p').text('Drug test data is unavailable or zero for selected filters. Try adjusting the filters.');
     return;
   }
 
-  // Group total tests and arrests by year
-  const totalByYear = d3.rollup(
+  // Determine grouping key
+  const jurFilter = d3.select('#jurisdictionFilter')?.node()?.value || 'All';
+  const groupKey = jurFilter === 'All' ? 'JURISDICTION' : 'AGE_GROUP';
+
+  // Group data
+  const groupedData = d3.rollup(
     data,
     v => d3.sum(v, d => +d.COUNT || 0),
-    d => d.YEAR
+    d => d[groupKey]
   );
 
-  const arrestsByYear = d3.rollup(
-    data,
-    v => d3.sum(v, d => +d.ARRESTS || 0),
-    d => d.YEAR
-  );
+  const keys = Array.from(groupedData.keys()).filter(k => k && k !== 'Unknown').sort();
+  const values = keys.map(k => groupedData.get(k));
 
-  const years = Array.from(totalByYear.keys()).sort();
-  const totals = years.map(y => totalByYear.get(y));
-  const arrests = years.map(y => arrestsByYear.get(y) || 0);
-  const arrestRates = totals.map((t, i) => t > 0 ? (arrests[i] / t) * 100 : 0);
-
-  // Setup chart
-  const margin = { top: 40, right: 60, bottom: 50, left: 70 };
+  // Chart setup
+  const margin = { top: 40, right: 40, bottom: 80, left: 70 };
   const width = 800, height = 400;
 
   const svg = container.append('svg')
@@ -451,55 +376,37 @@ function renderDrug() {
     .attr('height', height);
 
   const x = d3.scaleBand()
-    .domain(years)
+    .domain(keys)
     .range([margin.left, width - margin.right])
-    .padding(0.1);
+    .padding(0.2);
 
-  const yLeft = d3.scaleLinear()
-    .domain([0, d3.max(totals)]).nice()
-    .range([height - margin.bottom, margin.top]);
-
-  const yRight = d3.scaleLinear()
-    .domain([0, d3.max(arrestRates)]).nice()
+  const y = d3.scaleLinear()
+    .domain([0, d3.max(values)]).nice()
     .range([height - margin.bottom, margin.top]);
 
   // X Axis
   svg.append('g')
     .attr('transform', `translate(0,${height - margin.bottom})`)
-    .call(d3.axisBottom(x).tickFormat(d3.format('d')));
+    .call(d3.axisBottom(x))
+    .selectAll("text")
+    .attr("transform", "rotate(-45)")
+    .style("text-anchor", "end");
 
-  // Y Left Axis - Total Tests
+  // Y Axis
   svg.append('g')
     .attr('transform', `translate(${margin.left},0)`)
-    .call(d3.axisLeft(yLeft));
+    .call(d3.axisLeft(y));
 
-  // Y Right Axis - % Arrests
-  svg.append('g')
-    .attr('transform', `translate(${width - margin.right},0)`)
-    .call(d3.axisRight(yRight).ticks(6).tickFormat(d => `${d.toFixed(1)}%`));
-
-  // Bars - Positive Drug Tests
+  // Bars
   svg.selectAll('.bar')
-    .data(years)
+    .data(keys)
     .enter()
     .append('rect')
     .attr('x', d => x(d))
-    .attr('y', d => yLeft(totalByYear.get(d)))
+    .attr('y', d => y(groupedData.get(d)))
     .attr('width', x.bandwidth())
-    .attr('height', d => height - margin.bottom - yLeft(totalByYear.get(d)))
+    .attr('height', d => height - margin.bottom - y(groupedData.get(d)))
     .attr('fill', '#2ca02c');
-
-  // Line - % Arrests
-  const line = d3.line()
-    .x((d, i) => x(years[i]) + x.bandwidth() / 2)
-    .y(d => yRight(d));
-
-  svg.append('path')
-    .datum(arrestRates)
-    .attr('fill', 'none')
-    .attr('stroke', '#ff7f0e')
-    .attr('stroke-width', 2)
-    .attr('d', line);
 
   // Title
   svg.append('text')
@@ -507,26 +414,7 @@ function renderDrug() {
     .attr('y', margin.top - 20)
     .attr('text-anchor', 'middle')
     .attr('font-size', '16px')
-    .text('Positive Drug Tests vs % Resulting in Arrest');
-
-  // Legend
-  const legend = svg.append('g')
-    .attr('transform', `translate(${width - 200},${margin.top})`);
-
-  legend.append('rect')
-    .attr('x', 0).attr('y', 0).attr('width', 15).attr('height', 15)
-    .attr('fill', '#2ca02c');
-  legend.append('text')
-    .attr('x', 20).attr('y', 12)
-    .text('Positive Drug Tests');
-
-  legend.append('line')
-    .attr('x1', 0).attr('y1', 25)
-    .attr('x2', 15).attr('y2', 25)
-    .attr('stroke', '#ff7f0e')
-    .attr('stroke-width', 2);
-  legend.append('text')
-    .attr('x', 20).attr('y', 30)
-    .text('% Arrests');
+    .text(`Positive Drug Tests by ${groupKey}`);
 }
+
 
